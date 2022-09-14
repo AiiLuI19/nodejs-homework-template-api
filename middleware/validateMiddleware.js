@@ -74,9 +74,28 @@ const userValidationSubscript = (req, res, next) => {
   }
   next();
 };
+const userValidationVerify = (req, res, next) => {
+  const schema = Joi.object({
+    email: Joi.string()
+      .email({
+        minDomainSegments: 2,
+        tlds: { allow: ["com", "net", "org", "ua", "ru", "gov", "ca"] },
+      })
+      .pattern(
+        /^([\w-]+(?:\.[\w-]+)*)@((?:[\w-]+\.)*\w[\w-]{0,66})\.([a-z]{2,6}(?:\.[a-z]{2})?)$/i
+      )
+      .required(),
+  });
+  const validationResult = schema.validate(req.body);
+  if (validationResult.error) {
+    return res.status(400).json({ status: validationResult.error.details });
+  }
+  next();
+};
 module.exports = {
   validation,
   validationPatch,
   userValidation,
   userValidationSubscript,
+  userValidationVerify,
 };

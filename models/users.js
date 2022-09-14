@@ -3,20 +3,27 @@ const jwt = require("jsonwebtoken");
 const path = require("path");
 const gravatar = require("gravatar");
 const dotenv = require("dotenv");
+const { v4: uuidv4 } = require("uuid");
 
 const { User } = require("../db/userModel");
-
+const { sendEmail } = require("../middleware/emailMiddleware");
 dotenv.config({ path: path.join(__dirname, "../.env") });
 
 const signUpUser = async (req, res) => {
   try {
     const avatarURL = gravatar.url(req.body.email);
-
-    const user = new User({ ...req.body, avatarURL });
+    const verificationToken = jwt.sign(
+      {
+        verificationId: uuidv4(),
+      },
+      process.env.SECRET
+    );
+    const user = new User({ ...req.body, avatarURL, verificationToken });
     if (await User.findOne({ email: req.body.email })) {
       res.status(409).send({ message: "Email in use" });
     }
     await user.save();
+    await sendEmail(verificationToken, req.body.email);
     return res
       .status(201)
       .json({ email: user.email, subscription: user.subscription });
@@ -25,9 +32,36 @@ const signUpUser = async (req, res) => {
   }
 };
 
+const verifyUser = async (req, res) => {
+  const user = await User.findOne({
+    verificationToken: req.params.verificationToken,
+    verify: false,
+  });
+
+  if (user) {
+    await user.updateOne({ verify: true, verificationToken: null });
+    return res.status(200).json({ message: "Verification successful" });
+  }
+
+  return res.status(404).json({ message: "User not found" });
+};
+
+const verifyUserSecond = async (req, res) => {
+  const user = await User.findOne({ email: req.body.email });
+  if (user) {
+    console.log(user, user.verificationToken);
+    await sendEmail(user.verificationToken, req.body.email);
+    return res.status(200).json({ message: "Verification email sent" });
+  }
+
+  return res
+    .status(400)
+    .json({ message: "Verification has already been passed" });
+};
+
 async function loginUser(req, res) {
   try {
-    const user = await User.findOne({ email: req.body.email });
+    const user = await User.findOne({ email: req.body.email, verify: true });
 
     if (!user) {
       return res
@@ -110,4 +144,6 @@ module.exports = {
   currentUser,
   updateSubscription,
   addUserAvatar,
+  verifyUser,
+  verifyUserSecond,
 };
